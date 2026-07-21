@@ -2,6 +2,34 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Capture scroll parameter immediately before React Router normalization runs
+      (function() {
+        const hashQuery = window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '';
+        const searchParams = new URLSearchParams(window.location.search || hashQuery);
+        const scrollVal = searchParams.get('scroll');
+        if (scrollVal) {
+          window.targetScrollOffset = parseInt(scrollVal, 10);
+        }
+      })();
+
+      window.addEventListener('DOMContentLoaded', () => {
+        const targetScroll = window.targetScrollOffset;
+        if (targetScroll !== undefined && targetScroll !== null) {
+          setTimeout(() => {
+            window.scrollTo(0, targetScroll);
+            document.documentElement.scrollTop = targetScroll;
+            document.body.scrollTop = targetScroll;
+            // Lock scroll every 50ms thereafter
+            setInterval(() => {
+              window.scrollTo(0, targetScroll);
+              document.documentElement.scrollTop = targetScroll;
+              document.body.scrollTop = targetScroll;
+            }, 50);
+          }, 150);
+        }
+      });
+    </script>
     <link rel="icon" type="image/svg+xml" href="/profile.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ankesh Kumar | AI/ML Enthusiast & Full-Stack Developer</title>

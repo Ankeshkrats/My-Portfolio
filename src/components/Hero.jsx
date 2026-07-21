@@ -112,7 +112,7 @@ export default function Hero() {
   useEffect(() => {
     const interval = setInterval(() => {
       setRoleIndex((prev) => (prev + 1) % roles.length);
-    }, 4500); 
+    }, 3000); 
     return () => clearInterval(interval);
   }, []);
 
@@ -158,7 +158,6 @@ export default function Hero() {
     setIsPlaying(false);
   };
 
-  const currentRoleCharacters = roles[roleIndex].split("");
 
   return (
     <section className="relative min-h-screen flex items-center overflow-hidden">
@@ -231,41 +230,70 @@ export default function Hero() {
           </motion.div>
 
           <motion.h1
-            initial={{ opacity: 0, x: -30 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, delay: 0.1 }}
-            className="text-4xl sm:text-5xl md:text-6xl font-bold text-white leading-tight mb-3"
+            variants={{
+              hidden: { opacity: 0 },
+              visible: {
+                opacity: 1,
+                transition: {
+                  staggerChildren: 0.08,
+                  delayChildren: 0.1
+                }
+              }
+            }}
+            initial="hidden"
+            animate="visible"
+            className="text-4xl sm:text-5xl md:text-6xl font-bold text-white leading-tight mb-3 flex flex-wrap gap-x-[0.35em]"
           >
-            Hi, I'm <span className="gradient-text">Ankesh Kumar</span>
+            <motion.span
+              variants={{
+                hidden: { opacity: 0, y: 20 },
+                visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } }
+              }}
+              className="inline-block"
+            >
+              Hi,
+            </motion.span>
+            <motion.span
+              variants={{
+                hidden: { opacity: 0, y: 20 },
+                visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } }
+              }}
+              className="inline-block"
+            >
+              I'm
+            </motion.span>
+            <motion.span
+              variants={{
+                hidden: { opacity: 0, y: 20 },
+                visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } }
+              }}
+              className="inline-block gradient-text"
+            >
+              Ankesh
+            </motion.span>
+            <motion.span
+              variants={{
+                hidden: { opacity: 0, y: 20 },
+                visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } }
+              }}
+              className="inline-block gradient-text"
+            >
+              Kumar
+            </motion.span>
           </motion.h1>
 
           {/* Dynamic Animated Roles Container */}
-          <div className="h-10 mb-6 flex items-center">
+          <div className="min-h-[40px] mb-6 flex items-center">
             <AnimatePresence mode="wait">
               <motion.div
                 key={roleIndex}
-                initial="hidden"
-                animate="visible"
-                exit="hidden"
-                variants={{
-                  hidden: { opacity: 0 },
-                  visible: { opacity: 1, transition: { staggerChildren: 0.05 } },
-                }}
-                className="text-xl sm:text-2xl text-emerald-400 font-medium"
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: -20, opacity: 0 }}
+                transition={{ duration: 0.45, ease: "easeInOut" }}
+                className="text-xl sm:text-2xl text-emerald-400 font-medium whitespace-nowrap"
               >
-                {currentRoleCharacters.map((char, index) => (
-                  <motion.span
-                    key={index}
-                    variants={{
-                      hidden: { opacity: 0 },
-                      visible: { opacity: 1, y: 0 },
-                    }}
-                    className="inline-block" 
-                    style={{ minWidth: char === ' ' ? '0.5em' : 'auto' }} 
-                  >
-                    {char}
-                  </motion.span>
-                ))}
+                {roles[roleIndex]}
               </motion.div>
             </AnimatePresence>
           </div>

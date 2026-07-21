@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import React, { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence, useScroll, useTransform, useMotionValue } from "framer-motion";
 import { Download, ExternalLink, Calendar, ChevronDown, GraduationCap, BookOpen, School, Award, Briefcase } from "lucide-react";
 import { Link } from "react-router-dom";
 import PageWrapper from "../components/PageWrapper";
@@ -97,104 +97,155 @@ const learningTopics = [
   { title: "Cloud Deployment", hint: "Docker, Kubernetes & AWS" },
 ];
 
-function TimelineCard({ item, index }) {
+function HelixTimelineCard({ item, index, parentRotation, isMobile }) {
+  const cardRef = useRef(null);
   const [open, setOpen] = useState(false);
   const Icon = item.icon || GraduationCap;
 
+  // Track local scroll progress for reveal animations (unfurling focus)
+  const { scrollYProgress } = useScroll({
+    target: cardRef,
+    offset: ["start end", "center center", "end start"]
+  });
+
+  const scale = useTransform(scrollYProgress, [0, 0.45, 0.5, 0.55, 1], [0.85, 0.98, 1.0, 0.98, 0.85]);
+  const opacity = useTransform(scrollYProgress, [0, 0.2, 0.45, 0.55, 0.8, 1], [0.25, 0.7, 1.0, 1.0, 0.7, 0.3]);
+  
+  // Local reveal rotation (creates the unfurling spiral effect)
+  const localRotateY = useTransform(scrollYProgress, [0.2, 0.5], [45, 0]);
+
+  // Alternates between 0 (Right) and 180 (Left) degrees in 3D
+  const angleDeg = index % 2 === 0 ? 0 : 180;
+  const radius = isMobile ? 0 : 255;
+  const angleRad = (angleDeg * Math.PI) / 180;
+  const x = radius * Math.cos(angleRad);
+  const z = radius * Math.sin(angleRad);
+
+  // Counter-rotation value: cancels out parent rotation
+  const counterRotation = useTransform(parentRotation, (val) => -val);
+
   return (
-    <motion.div
-      initial={{ opacity: 0, x: -30 }}
-      whileInView={{ opacity: 1, x: 0 }}
-      viewport={{ once: true, amount: 0.2 }}
-      transition={{ duration: 0.5, delay: index * 0.12 }}
-      className="relative pl-10 md:pl-12 last:mb-0 mb-8 group"
+    <div
+      ref={cardRef}
+      className={isMobile ? "relative w-full flex justify-center z-20" : `absolute left-1/2 -translate-x-1/2 flex items-center justify-center transform-gpu`}
+      style={isMobile ? {} : {
+        top: `${index * 270 + 80}px`,
+        transformStyle: "preserve-3d",
+        transform: `translate3d(${x}px, 0px, ${z}px)`
+      }}
     >
-      {/* Timeline Indicator Node */}
-      <div className="absolute left-0 top-1.5 w-7 h-7 rounded-full bg-[#080B12] border-2 border-[#2563EB] group-hover:border-[#7C3AED] flex items-center justify-center transition-colors shadow-[0_0_10px_rgba(37,99,235,0.2)] z-10">
-        <Icon size={13} className="text-[#2563EB] group-hover:text-[#7C3AED] transition-colors" />
-      </div>
-
-      {/* Card Content */}
-      <div className="bg-[#0F172A]/40 backdrop-blur-xl border border-white/5 rounded-2xl p-6 hover:border-[#2563EB]/40 hover:shadow-[0_0_20px_rgba(37,99,235,0.06)] transition-all">
-        <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
-          <div>
-            <h4 className="text-white font-semibold text-lg group-hover:text-[#7C3AED] transition-colors">
-              {item.degree}
-            </h4>
-            <p className="text-sm text-gray-400 mt-0.5">{item.place}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-mono font-medium text-gray-400 bg-white/5 border border-white/5 px-2.5 py-1 rounded-full flex items-center gap-1.5 shrink-0">
-              <Calendar size={12} className="text-[#2563EB]" />
-              {item.duration}
-            </span>
-            {item.score && (
-              <span className="text-xs font-mono font-semibold text-[#7C3AED] bg-[#7C3AED]/10 border border-[#7C3AED]/20 px-2.5 py-1 rounded-full shrink-0">
-                {item.score}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <p className="text-sm text-gray-400 leading-relaxed mb-4">{item.description}</p>
-
-        {/* Collapsible Action Button */}
-        <button
-          onClick={() => setOpen(!open)}
-          className="cursor-hover inline-flex items-center gap-1.5 text-xs text-[#2563EB] hover:text-[#7C3AED] transition-colors font-medium"
+      {/* Billboarding Counter-Rotation Wrapper */}
+      <motion.div
+        style={{
+          rotateY: isMobile ? 0 : counterRotation,
+          transformStyle: "preserve-3d"
+        }}
+        className="relative z-20"
+      >
+        {/* Unfurling details card */}
+        <motion.div
+          style={{
+            scale: scale,
+            opacity: opacity,
+            rotateY: isMobile ? 0 : localRotateY,
+            transformStyle: "preserve-3d"
+          }}
+          className={`w-[90vw] max-w-[340px] sm:max-w-[400px] bg-[#090d16] border border-white/5 rounded-2xl p-6 transition-all duration-300 relative z-20 ${
+            index % 2 === 0 
+              ? "hover:border-accent-blue/40 hover:shadow-[0_0_20px_rgba(59,130,246,0.06)]" 
+              : "hover:border-accent-purple/40 hover:shadow-[0_0_20px_rgba(139,92,246,0.06)]"
+          }`}
         >
-          {open ? "Hide Coursework & Highlights" : "View Coursework & Highlights"}
-          <motion.div
-            animate={{ rotate: open ? 180 : 0 }}
-            transition={{ duration: 0.2 }}
+          {/* Subtle internal gradient highlight */}
+          <div className={`absolute -inset-px bg-gradient-to-r ${
+            index % 2 === 0 ? "from-accent-blue/5 to-transparent" : "from-accent-purple/5 to-transparent"
+          } opacity-50 blur-sm rounded-2xl pointer-events-none`} />
+
+          {/* Card Title & Dates */}
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-3 relative z-10">
+            <div>
+              <h4 className={`font-semibold text-lg transition-colors ${
+                index % 2 === 0 ? "text-blue-400" : "text-purple-400"
+              }`}>
+                {item.degree}
+              </h4>
+              <p className="text-sm text-gray-400 mt-0.5">{item.place}</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-mono font-medium text-gray-400 bg-white/5 border border-white/5 px-2.5 py-1 rounded-full flex items-center gap-1.5 shrink-0">
+                <Calendar size={12} className={index % 2 === 0 ? "text-[#3b82f6]" : "text-[#8b5cf6]"} />
+                {item.duration}
+              </span>
+              {item.score && (
+                <span className={`text-xs font-mono font-semibold px-2.5 py-1 rounded-full shrink-0 ${
+                  index % 2 === 0 
+                    ? "text-[#3b82f6] bg-[#3b82f6]/10 border border-[#3b82f6]/20" 
+                    : "text-[#8b5cf6] bg-[#8b5cf6]/10 border border-[#8b5cf6]/20"
+                }`}>
+                  {item.score}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <p className="text-sm text-gray-400 leading-relaxed mb-4 relative z-10">{item.description}</p>
+
+          {/* Toggle Button */}
+          <button
+            onClick={() => setOpen(!open)}
+            className={`cursor-hover inline-flex items-center gap-1.5 text-xs font-medium transition-colors relative z-10 ${
+              index % 2 === 0 ? "text-blue-400 hover:text-blue-300" : "text-purple-400 hover:text-purple-300"
+            }`}
           >
-            <ChevronDown size={13} />
-          </motion.div>
-        </button>
-
-        {/* Collapsible Content */}
-        <AnimatePresence initial={false}>
-          {open && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.3, ease: "easeInOut" }}
-              className="overflow-hidden"
-            >
-              <div className="pt-4 mt-4 border-t border-white/5">
-                <p className="text-xs text-[#7C3AED] uppercase tracking-wider font-mono mb-2">Key Coursework</p>
-                <div className="flex flex-wrap gap-1.5 mb-4">
-                  {item.coursework.map((c) => (
-                    <span
-                      key={c}
-                      className="text-xs text-gray-300 bg-white/5 border border-white/5 px-2.5 py-1 rounded-md"
-                    >
-                      {c}
-                    </span>
-                  ))}
-                </div>
-
-                <p className="text-xs text-[#2563EB] uppercase tracking-wider font-mono mb-2">Academic Highlights</p>
-                <ul className="flex flex-col gap-2">
-                  {item.highlights.map((h, i) => (
-                    <li key={i} className="text-sm text-gray-400 flex gap-2">
-                      <span className="text-[#2563EB] shrink-0">▸</span>
-                      <span>{h}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+            {open ? "Hide Coursework & Highlights" : "View Coursework & Highlights"}
+            <motion.div animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.2 }}>
+              <ChevronDown size={13} />
             </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </motion.div>
+          </button>
+
+          {/* Coursework Details */}
+          <AnimatePresence initial={false}>
+            {open && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3, ease: "easeInOut" }}
+                className="overflow-hidden relative z-10"
+              >
+                <div className="pt-4 mt-4 border-t border-white/5">
+                  <p className={`text-xs uppercase tracking-wider font-mono mb-2 ${index % 2 === 0 ? "text-blue-400" : "text-purple-400"}`}>Key Coursework</p>
+                  <div className="flex flex-wrap gap-1.5 mb-4">
+                    {item.coursework.map((c) => (
+                      <span key={c} className="text-xs text-gray-300 bg-white/5 border border-white/5 px-2.5 py-1 rounded-md">
+                        {c}
+                      </span>
+                    ))}
+                  </div>
+
+                  <p className={`text-xs uppercase tracking-wider font-mono mb-2 ${index % 2 === 0 ? "text-blue-400" : "text-purple-400"}`}>Academic Highlights</p>
+                  <ul className="flex flex-col gap-2">
+                    {item.highlights.map((h, hidx) => (
+                      <li key={hidx} className="text-sm text-gray-400 flex gap-2">
+                        <span className={`shrink-0 ${index % 2 === 0 ? "text-blue-400" : "text-purple-400"}`}>▸</span>
+                        <span>{h}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+      </motion.div>
+    </div>
   );
 }
 
 export default function About() {
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [isMobile, setIsMobile] = useState(false);
+  const timelineRef = useRef(null);
 
   useEffect(() => {
     const handleMouseMove = (e) => {
@@ -206,6 +257,31 @@ export default function About() {
     window.addEventListener("mousemove", handleMouseMove);
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, []);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const forceMobile = isMobile || prefersReducedMotion;
+
+  // Track parent scroll progress for 3D spinning
+  const { scrollYProgress } = useScroll({
+    target: timelineRef,
+    offset: ["start end", "end start"]
+  });
+
+  const rotationY = forceMobile
+    ? useMotionValue(0)
+    : useTransform(scrollYProgress, [0, 1], [-30, 480]); // 510-degree twist
+
+  // 15 Floating atoms in the deep timeline background
+  const backgroundParticles = Array.from({ length: 15 });
 
   return (
     <PageWrapper>
@@ -420,29 +496,76 @@ export default function About() {
 
       </div>
 
-      {/* Education Timeline */}
+      {/* Education Timeline Heading */}
       <div className="flex items-center gap-3 mb-8 relative z-10">
         <span className="text-[#2563EB] font-mono text-sm font-semibold">01</span>
         <div className="flex-1 h-px bg-white/5" />
         <h3 className="text-white font-bold text-xl tracking-tight whitespace-nowrap">Education Timeline</h3>
       </div>
 
-      <div className="relative mb-16 z-10">
-        {/* Central timeline line */}
-        <motion.div
-          initial={{ scaleY: 0 }}
-          whileInView={{ scaleY: 1 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.9, ease: "easeOut" }}
-          style={{ transformOrigin: "top" }}
-          className="absolute left-3.5 top-3 bottom-3 w-[2px] bg-gradient-to-b from-[#2563EB] via-[#7C3AED] to-white/5"
-        />
-
-        <div className="flex flex-col">
-          {educationList.map((item, i) => (
-            <TimelineCard key={i} item={item} index={i} />
-          ))}
+      {/* Timeline Wrapper */}
+      <div
+        ref={timelineRef}
+        className="relative mb-24 z-10 w-full overflow-visible flex flex-col items-center justify-center pt-8 pb-12"
+        style={{
+          perspective: "1200px",
+          perspectiveOrigin: "50% 30%",
+          transformStyle: "preserve-3d"
+        }}
+      >
+        {/* BACKGROUND LAYER (z-0): Ambient particles */}
+        <div className="absolute inset-0 z-0 overflow-visible pointer-events-none flex items-center justify-center">
+          {/* Ambient molecule particles in background */}
+          <div className="absolute inset-0 overflow-hidden">
+            {backgroundParticles.map((_, i) => (
+              <motion.div
+                key={i}
+                className={`absolute rounded-full blur-[1px] ${
+                  i % 2 === 0 ? "bg-[#3b82f6]/5" : "bg-[#8b5cf6]/5"
+                }`}
+                style={{
+                  width: `${Math.random() * 8 + 4}px`,
+                  height: `${Math.random() * 8 + 4}px`,
+                  left: `${Math.random() * 100}%`,
+                  top: `${Math.random() * 100}%`,
+                }}
+                animate={{
+                  y: ["0px", `${(Math.random() - 0.5) * 80}px`, "0px"],
+                  x: ["0px", `${(Math.random() - 0.5) * 80}px`, "0px"],
+                  opacity: [0.1, 0.4, 0.1],
+                }}
+                transition={{
+                  duration: Math.random() * 10 + 10,
+                  repeat: Infinity,
+                  ease: "easeInOut"
+                }}
+              />
+            ))}
+          </div>
         </div>
+
+        {/* FOREGROUND LAYER (z-10): 3D Revolving Cards */}
+        <motion.div
+          style={{
+            rotateY: forceMobile ? 0 : rotationY,
+            transformStyle: "preserve-3d"
+          }}
+          className={`relative w-full ${forceMobile ? "h-auto flex flex-col gap-8" : "h-[1160px]"} transform-gpu`}
+        >
+          {forceMobile ? (
+            // Mobile fallback timeline structure (no vertical lines or markers)
+            <div className="flex flex-col gap-8 w-full px-4">
+              {educationList.map((item, i) => (
+                <HelixTimelineCard key={i} item={item} index={i} parentRotation={rotationY} isMobile={true} />
+              ))}
+            </div>
+          ) : (
+            // Desktop 3D revolving carousel (no background strands or lines)
+            educationList.map((item, i) => (
+              <HelixTimelineCard key={i} item={item} index={i} parentRotation={rotationY} isMobile={false} />
+            ))
+          )}
+        </motion.div>
       </div>
 
       {/* Experience Timeline */}

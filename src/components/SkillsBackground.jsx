@@ -8,16 +8,110 @@ export default function SkillsBackground() {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     let animationFrameId;
-    let nodes = [];
+    let segments = [];
+    let adjacency = new Map();
     let signals = [];
+    
+    // Theme colors matching the 4 quadrants/categories
+    const colors = [
+      "rgb(59, 130, 246)",  // Blue
+      "rgb(34, 211, 238)",  // Cyan
+      "rgb(139, 92, 246)", // Purple
+      "rgb(16, 185, 129)"  // Emerald
+    ];
 
     let mouse = { x: -1000, y: -1000 };
     let scrollSpeed = 0;
     let lastScrollY = window.scrollY;
+    let width = window.innerWidth;
+    let height = window.innerHeight;
 
-    const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+    // Check if user prefers reduced motion
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const getPointKey = (pt) => `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`;
+
+    const getSegmentColor = (mx, my, w, h, alpha) => {
+      const isLeft = mx < w / 2;
+      const isTop = my < h / 2;
+      if (isTop && isLeft) return `rgba(59, 130, 246, ${alpha})`;
+      if (isTop && !isLeft) return `rgba(34, 211, 238, ${alpha})`;
+      if (!isTop && isLeft) return `rgba(139, 92, 246, ${alpha})`;
+      return `rgba(16, 185, 129, ${alpha})`;
+    };
+
+    const initGrid = () => {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+      
+      const R = 75; // Hexagon radius
+      const W = R * 1.5;
+      const H = R * Math.sqrt(3);
+      
+      const cols = Math.ceil(width / W) + 2;
+      const rows = Math.ceil(height / H) + 2;
+      
+      const segmentsMap = new Map();
+      
+      for (let col = -1; col < cols; col++) {
+        for (let row = -1; row < rows; row++) {
+          const cx = col * W;
+          const cy = row * H + (col % 2) * (H / 2);
+          
+          // Generate 6 vertices
+          const vertices = [];
+          for (let i = 0; i < 6; i++) {
+            const angle = (i * Math.PI) / 3;
+            vertices.push({
+              x: cx + R * Math.cos(angle),
+              y: cy + R * Math.sin(angle)
+            });
+          }
+          
+          // Generate 6 segments
+          for (let i = 0; i < 6; i++) {
+            const v1 = vertices[i];
+            const v2 = vertices[(i + 1) % 6];
+            
+            // Normalize segments to avoid duplicates
+            let p1 = v1;
+            let p2 = v2;
+            if (p1.x > p2.x || (Math.abs(p1.x - p2.x) < 0.1 && p1.y > p2.y)) {
+              p1 = v2;
+              p2 = v1;
+            }
+            
+            const segKey = `${getPointKey(p1)}_${getPointKey(p2)}`;
+            if (!segmentsMap.has(segKey)) {
+              segmentsMap.set(segKey, {
+                p1,
+                p2,
+                key: segKey,
+                mx: (p1.x + p2.x) / 2,
+                my: (p1.y + p2.y) / 2
+              });
+            }
+          }
+        }
+      }
+      
+      segments = Array.from(segmentsMap.values());
+      
+      // Build adjacency list
+      adjacency = new Map();
+      segments.forEach((seg) => {
+        const k1 = getPointKey(seg.p1);
+        const k2 = getPointKey(seg.p2);
+        
+        if (!adjacency.has(k1)) adjacency.set(k1, []);
+        if (!adjacency.has(k2)) adjacency.set(k2, []);
+        
+        adjacency.get(k1).push(seg);
+        adjacency.get(k2).push(seg);
+      });
+
+      // Clear existing signals when resizing
+      signals = [];
     };
 
     const handleMouseMove = (e) => {
@@ -36,155 +130,165 @@ export default function SkillsBackground() {
       lastScrollY = currentScrollY;
     };
 
-    window.addEventListener("resize", resize);
+    window.addEventListener("resize", initGrid);
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseleave", handleMouseLeave);
     window.addEventListener("scroll", handleScroll, { passive: true });
 
-    resize();
-
-    // Initialize nodes
-    const count = Math.min(40, Math.floor(canvas.width / 35));
-    for (let i = 0; i < count; i++) {
-      nodes.push({
-        id: i,
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        vx: (Math.random() - 0.5) * 0.25,
-        vy: (Math.random() - 0.5) * 0.25,
-        radius: Math.random() * 2 + 1.5,
-        connections: [],
-      });
-    }
-
-    // Build static connection topology (within 160px distance)
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        const dx = nodes[i].x - nodes[j].x;
-        const dy = nodes[i].y - nodes[j].y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 160) {
-          nodes[i].connections.push(nodes[j]);
-          nodes[j].connections.push(nodes[i]);
-        }
-      }
-    }
+    initGrid();
 
     const spawnSignal = () => {
-      if (nodes.length === 0) return;
-      const startNode = nodes[Math.floor(Math.random() * nodes.length)];
-      if (startNode.connections.length === 0) return;
-      const endNode = startNode.connections[Math.floor(Math.random() * startNode.connections.length)];
+      if (segments.length === 0 || prefersReducedMotion) return;
+      
+      const startSeg = segments[Math.floor(Math.random() * segments.length)];
+      const startDir = Math.random() > 0.5;
+      const p1 = startSeg.p1;
+      const p2 = startSeg.p2;
+      
+      const from = startDir ? p1 : p2;
+      const to = startDir ? p2 : p1;
+      
+      const speed = Math.random() * 0.015 + 0.015;
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      const maxSegments = Math.floor(Math.random() * 5) + 3; // Length of traversal path
+      
       signals.push({
-        startX: startNode.x,
-        startY: startNode.y,
-        endX: endNode.x,
-        endY: endNode.y,
+        segmentsVisited: [{ segment: startSeg, from, to }],
         progress: 0,
-        speed: Math.random() * 0.015 + 0.005,
+        speed,
+        color,
+        maxSegments,
+        width: Math.random() * 1.5 + 1.2
       });
     };
 
     const draw = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, width, height);
 
-      // Decaying scroll speed
+      // Decaying scroll speed booster
       scrollSpeed *= 0.95;
 
-      // Spawn rate based on scrolling activity
-      const baseChance = 0.02;
-      const scrollChance = scrollSpeed * 0.01;
-      if (Math.random() < baseChance + scrollChance && signals.length < 30) {
-        spawnSignal();
-      }
-
-      // Update and draw nodes
-      nodes.forEach((n) => {
-        n.x += n.vx;
-        n.y += n.vy;
-
-        // Bounce from walls
-        if (n.x < 0 || n.x > canvas.width) n.vx *= -1;
-        if (n.y < 0 || n.y > canvas.height) n.vy *= -1;
-
-        // Interaction with mouse
-        let nodeGlow = 0;
+      // Draw the Hex Grid
+      segments.forEach((seg) => {
+        // Calculate distance to mouse for interactive highlight
+        let alpha = 0.025;
+        let glow = 0;
+        
         if (mouse.x > -500) {
-          const dx = mouse.x - n.x;
-          const dy = mouse.y - n.y;
+          const dx = mouse.x - seg.mx;
+          const dy = mouse.y - seg.my;
           const dist = Math.sqrt(dx * dx + dy * dy);
           if (dist < 180) {
-            nodeGlow = (180 - dist) / 180;
-            // subtle push away
-            n.x -= (dx / dist) * nodeGlow * 0.2;
-            n.y -= (dy / dist) * nodeGlow * 0.2;
+            glow = (180 - dist) / 180;
+            alpha = 0.025 + glow * 0.12;
           }
         }
-
+        
+        ctx.strokeStyle = getSegmentColor(seg.mx, seg.my, width, height, alpha);
+        ctx.lineWidth = 1 + glow * 0.5;
         ctx.beginPath();
-        ctx.arc(n.x, n.y, n.radius + nodeGlow * 1.5, 0, Math.PI * 2);
-        ctx.fillStyle = nodeGlow > 0.1 
-          ? `rgba(34, 211, 238, ${0.2 + nodeGlow * 0.4})` 
-          : "rgba(34, 211, 238, 0.12)";
-        ctx.shadowBlur = nodeGlow * 10;
-        ctx.shadowColor = "rgba(34, 211, 238, 0.8)";
-        ctx.fill();
-        ctx.shadowBlur = 0; // reset
+        ctx.moveTo(seg.p1.x, seg.p1.y);
+        ctx.lineTo(seg.p2.x, seg.p2.y);
+        ctx.stroke();
       });
 
-      // Draw connection lines
-      ctx.strokeStyle = "rgba(34, 211, 238, 0.04)";
-      ctx.lineWidth = 1;
-      for (let i = 0; i < nodes.length; i++) {
-        const n1 = nodes[i];
-        n1.connections.forEach((n2) => {
-          // Check proximity of both to mouse
-          let lineAlpha = 0.04;
-          if (mouse.x > -500) {
-            const d1 = Math.sqrt((mouse.x - n1.x) ** 2 + (mouse.y - n1.y) ** 2);
-            const d2 = Math.sqrt((mouse.x - n2.x) ** 2 + (mouse.y - n2.y) ** 2);
-            if (d1 < 150 || d2 < 150) {
-              lineAlpha = 0.15 * (1 - Math.min(d1, d2) / 150);
+      // Update and Draw Signals
+      if (!prefersReducedMotion) {
+        // Spawn signals based on scrolling or baseline rate
+        const spawnChance = 0.03 + (scrollSpeed * 0.02);
+        if (Math.random() < spawnChance && signals.length < 25) {
+          spawnSignal();
+        }
+
+        for (let i = signals.length - 1; i >= 0; i--) {
+          const sig = signals[i];
+          const scrollBoost = 1 + scrollSpeed * 0.15;
+          sig.progress += sig.speed * scrollBoost;
+
+          // Collect visited points for trail drawing
+          const pathPoints = [];
+          
+          // Traverse through all completed segments in reverse order
+          for (let j = sig.segmentsVisited.length - 1; j >= 0; j--) {
+            const segData = sig.segmentsVisited[j];
+            if (j === sig.segmentsVisited.length - 1) {
+              // Current active segment: interpolate head
+              const hx = segData.from.x + (segData.to.x - segData.from.x) * sig.progress;
+              const hy = segData.from.y + (segData.to.y - segData.from.y) * sig.progress;
+              pathPoints.push({ x: hx, y: hy });
+              pathPoints.push({ x: segData.from.x, y: segData.from.y });
+            } else {
+              // Completed segments in history
+              pathPoints.push({ x: segData.from.x, y: segData.from.y });
             }
           }
-          ctx.strokeStyle = `rgba(34, 211, 238, ${lineAlpha})`;
-          ctx.beginPath();
-          ctx.moveTo(n1.x, n1.y);
-          ctx.lineTo(n2.x, n2.y);
-          ctx.stroke();
-        });
-      }
 
-      // Update and draw signals
-      signals.forEach((s, idx) => {
-        // speed up signals when scrolling
-        const currentSpeed = s.speed * (1 + scrollSpeed * 0.2);
-        s.progress += currentSpeed;
+          // Check if segment is completed
+          if (sig.progress >= 1) {
+            const current = sig.segmentsVisited[sig.segmentsVisited.length - 1];
+            const reachPt = current.to;
+            const reachKey = getPointKey(reachPt);
+            
+            const options = adjacency.get(reachKey) || [];
+            const filtered = options.filter(s => s.key !== current.segment.key);
+            
+            if (filtered.length > 0 && sig.segmentsVisited.length < sig.maxSegments) {
+              const nextSeg = filtered[Math.floor(Math.random() * filtered.length)];
+              const nextTo = (getPointKey(nextSeg.p1) === reachKey) ? nextSeg.p2 : nextSeg.p1;
+              
+              sig.segmentsVisited.push({
+                segment: nextSeg,
+                from: reachPt,
+                to: nextTo
+              });
+              sig.progress = 0;
+            } else {
+              // Signal reached the end of its life, remove it
+              signals.splice(i, 1);
+              continue;
+            }
+          }
 
-        if (s.progress >= 1) {
-          signals.splice(idx, 1);
-          return;
+          // Draw Glowing Signal Trail
+          if (pathPoints.length > 1) {
+            ctx.beginPath();
+            ctx.moveTo(pathPoints[0].x, pathPoints[0].y);
+            for (let k = 1; k < pathPoints.length; k++) {
+              ctx.lineTo(pathPoints[k].x, pathPoints[k].y);
+            }
+            
+            // Faint glow for the path line
+            ctx.strokeStyle = sig.color;
+            ctx.lineWidth = sig.width;
+            ctx.lineCap = "round";
+            ctx.lineJoin = "round";
+            ctx.stroke();
+
+            // Glowing head
+            const head = pathPoints[0];
+            ctx.beginPath();
+            ctx.arc(head.x, head.y, sig.width * 1.6, 0, Math.PI * 2);
+            ctx.fillStyle = sig.color;
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = sig.color;
+            ctx.fill();
+            ctx.shadowBlur = 0; // Reset canvas shadow
+          }
         }
-
-        const cx = s.startX + (s.endX - s.startX) * s.progress;
-        const cy = s.startY + (s.endY - s.startY) * s.progress;
-
-        ctx.beginPath();
-        ctx.arc(cx, cy, 2, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(6, 182, 212, 0.85)";
-        ctx.shadowBlur = 6;
-        ctx.shadowColor = "rgb(6, 182, 212)";
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      });
+      }
 
       animationFrameId = requestAnimationFrame(draw);
     };
 
-    draw();
+    // If motion is reduced, just draw a static grid once and freeze
+    if (prefersReducedMotion) {
+      draw();
+    } else {
+      draw();
+    }
 
     return () => {
-      window.removeEventListener("resize", resize);
+      window.removeEventListener("resize", initGrid);
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseleave", handleMouseLeave);
       window.removeEventListener("scroll", handleScroll);
@@ -196,6 +300,7 @@ export default function SkillsBackground() {
     <canvas
       ref={canvasRef}
       className="fixed inset-0 w-full h-full pointer-events-none z-0 bg-transparent"
+      style={{ willChange: "transform" }}
     />
   );
 }
